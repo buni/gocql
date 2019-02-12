@@ -57,3 +57,17 @@ func TestScyllaConnPickerShardOf(t *testing.T) {
 		}
 	}
 }
+
+func TestScyllaConnPickerParallel(t *testing.T) {
+	s := scyllaConnPicker{
+		nrShards:  4,
+		msbIgnore: 12,
+	}
+	s.conns = []*Conn{nil, nil}
+	for i := 0; i < 100; i++ {
+		t.Run("conn pick parallel test", func(t *testing.T) {
+			t.Parallel()
+			s.Pick(token(nil))
+		})
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"sync"
 )
 
 // scyllaSupported represents Scylla connection options as sent in SUPPORTED
@@ -85,6 +86,7 @@ type scyllaConnPicker struct {
 	nrShards  int
 	msbIgnore uint64
 	pos       int
+	mu        sync.RWMutex
 }
 
 func newScyllaConnPicker(conn *Conn) *scyllaConnPicker {
@@ -104,6 +106,8 @@ func newScyllaConnPicker(conn *Conn) *scyllaConnPicker {
 }
 
 func (p *scyllaConnPicker) Remove(conn *Conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	s := parseSupported(conn.supported)
 	if s.nrShards == 0 {
 		panic(fmt.Sprintf("scylla: %s not a sharded connection", conn.Address()))
@@ -115,6 +119,8 @@ func (p *scyllaConnPicker) Remove(conn *Conn) {
 }
 
 func (p *scyllaConnPicker) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	conns := p.conns
 	p.conns = nil
 	for _, conn := range conns {
@@ -125,10 +131,14 @@ func (p *scyllaConnPicker) Close() {
 }
 
 func (p *scyllaConnPicker) Size() (int, int) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return p.nrConns, p.nrShards - p.nrConns
 }
 
 func (p *scyllaConnPicker) Pick(t token) *Conn {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.conns) == 0 {
 		return nil
 	}
@@ -153,6 +163,7 @@ func (p *scyllaConnPicker) Pick(t token) *Conn {
 	}
 
 	idx := p.shardOf(mmt)
+
 	return p.conns[idx]
 }
 
@@ -168,6 +179,8 @@ func (p *scyllaConnPicker) shardOf(token murmur3Token) int {
 }
 
 func (p *scyllaConnPicker) Put(conn *Conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	s := parseSupported(conn.supported)
 	if s.nrShards == 0 {
 		panic(fmt.Sprintf("scylla: %s not a sharded connection", conn.Address()))
